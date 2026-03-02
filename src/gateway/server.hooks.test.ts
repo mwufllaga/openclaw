@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import { resolveMainSessionKeyFromConfig } from "../config/sessions.js";
 import { drainSystemEvents, peekSystemEvents } from "../infra/system-events.js";
 import {
+  agentCommand,
   cronIsolatedRun,
   installGatewayTestHooks,
   testState,
@@ -39,6 +40,27 @@ describe("gateway server hooks", () => {
       const wakeEvents = await waitForSystemEvent();
       expect(wakeEvents.some((e) => e.includes("Ping"))).toBe(true);
       drainSystemEvents(resolveMainKey());
+
+      agentCommand.mockReset();
+      const resMessage = await fetch(`http://127.0.0.1:${port}/hooks/message`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer hook-secret",
+        },
+        body: JSON.stringify({ text: "Hello from message hook" }),
+      });
+      expect(resMessage.status).toBe(202);
+      const messageBody = (await resMessage.json()) as { runId?: string };
+      expect(messageBody.runId).toBeTruthy();
+      expect(agentCommand).toHaveBeenCalledTimes(1);
+      const messageCall = (agentCommand.mock.calls[0] as unknown[] | undefined)?.[0] as
+        | { message?: string; sessionKey?: string; messageChannel?: string }
+        | undefined;
+      expect(messageCall?.message).toBe("Hello from message hook");
+      expect(messageCall?.sessionKey).toBe(resolveMainKey());
+      expect(messageCall?.messageChannel).toBe("hook");
+      expect(peekSystemEvents(resolveMainKey()).length).toBe(0);
 
       cronIsolatedRun.mockClear();
       cronIsolatedRun.mockResolvedValueOnce({

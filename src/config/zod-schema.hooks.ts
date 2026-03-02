@@ -40,7 +40,7 @@ export const HookMappingSchema = z
         source: z.string().optional(),
       })
       .optional(),
-    action: z.union([z.literal("wake"), z.literal("agent")]).optional(),
+    action: z.union([z.literal("wake"), z.literal("agent"), z.literal("message")]).optional(),
     wakeMode: z.union([z.literal("now"), z.literal("next-heartbeat")]).optional(),
     name: z.string().optional(),
     agentId: z.string().optional(),

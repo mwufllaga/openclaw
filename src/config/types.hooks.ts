@@ -11,7 +11,7 @@ export type HookMappingTransform = {
 export type HookMappingConfig = {
   id?: string;
   match?: HookMappingMatch;
-  action?: "wake" | "agent";
+  action?: "wake" | "agent" | "message";
   wakeMode?: "now" | "next-heartbeat";
   name?: string;
   /** Route this hook to a specific agent (unknown ids fall back to the default agent). */

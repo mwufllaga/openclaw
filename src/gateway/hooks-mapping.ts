@@ -8,7 +8,7 @@ export type HookMappingResolved = {
   id: string;
   matchPath?: string;
   matchSource?: string;
-  action: "wake" | "agent";
+  action: "wake" | "agent" | "message";
   wakeMode?: "now" | "next-heartbeat";
   name?: string;
   agentId?: string;
@@ -42,6 +42,10 @@ export type HookAction =
       kind: "wake";
       text: string;
       mode: "now" | "next-heartbeat";
+    }
+  | {
+      kind: "message";
+      text: string;
     }
   | {
       kind: "agent";
@@ -251,6 +255,16 @@ function buildActionFromMapping(
       },
     };
   }
+  if (mapping.action === "message") {
+    const text = renderTemplate(mapping.textTemplate ?? "", ctx);
+    return {
+      ok: true,
+      action: {
+        kind: "message",
+        text,
+      },
+    };
+  }
   const message = renderTemplate(mapping.messageTemplate ?? "", ctx);
   return {
     ok: true,
@@ -275,7 +289,7 @@ function buildActionFromMapping(
 function mergeAction(
   base: HookAction,
   override: HookTransformResult,
-  defaultAction: "wake" | "agent",
+  defaultAction: "wake" | "agent" | "message",
 ): HookMappingResult {
   if (!override) {
     return validateAction(base);
@@ -286,6 +300,11 @@ function mergeAction(
     const text = typeof override.text === "string" ? override.text : (baseWake?.text ?? "");
     const mode = override.mode === "next-heartbeat" ? "next-heartbeat" : (baseWake?.mode ?? "now");
     return validateAction({ kind: "wake", text, mode });
+  }
+  if (kind === "message") {
+    const baseMessage = base.kind === "message" ? base : undefined;
+    const text = typeof override.text === "string" ? override.text : (baseMessage?.text ?? "");
+    return validateAction({ kind: "message", text });
   }
   const baseAgent = base.kind === "agent" ? base : undefined;
   const message =
@@ -314,6 +333,12 @@ function mergeAction(
 
 function validateAction(action: HookAction): HookMappingResult {
   if (action.kind === "wake") {
+    if (!action.text?.trim()) {
+      return { ok: false, error: "hook mapping requires text" };
+    }
+    return { ok: true, action };
+  }
+  if (action.kind === "message") {
     if (!action.text?.trim()) {
       return { ok: false, error: "hook mapping requires text" };
     }
