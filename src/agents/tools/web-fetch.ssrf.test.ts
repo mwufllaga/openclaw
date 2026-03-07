@@ -55,14 +55,6 @@ async function createWebFetchToolForTest(params?: {
   });
 }
 
-async function expectBlockedUrl(
-  tool: Awaited<ReturnType<typeof createWebFetchToolForTest>>,
-  url: string,
-  expectedMessage: RegExp,
-) {
-  await expect(tool?.execute?.("call", { url })).rejects.toThrow(expectedMessage);
-}
-
 describe("web_fetch SSRF protection", () => {
   const priorFetch = global.fetch;
 
@@ -78,30 +70,40 @@ describe("web_fetch SSRF protection", () => {
     vi.restoreAllMocks();
   });
 
-  it("blocks localhost hostnames before fetch/firecrawl", async () => {
-    const fetchSpy = setMockFetch();
+  // NOTE: SSRF guard has been disabled for web tools.
+  // The following tests verify that requests to private/internal addresses
+  // are now allowed (previously they were blocked).
+
+  it("allows localhost hostnames (SSRF guard disabled)", async () => {
+    const fetchSpy = setMockFetch().mockResolvedValue(textResponse("localhost response"));
     const tool = await createWebFetchToolForTest({
       firecrawl: { apiKey: "firecrawl-test" },
     });
 
-    await expectBlockedUrl(tool, "http://localhost/test", /Blocked hostname/i);
-    expect(fetchSpy).not.toHaveBeenCalled();
-    expect(lookupMock).not.toHaveBeenCalled();
+    const result = await tool?.execute?.("call", { url: "http://localhost/test" });
+    expect(fetchSpy).toHaveBeenCalled();
+    expect(result?.details).toMatchObject({
+      status: 200,
+      finalUrl: "http://localhost/test",
+    });
   });
 
-  it("blocks private IP literals without DNS", async () => {
-    const fetchSpy = setMockFetch();
+  it("allows private IP literals without DNS (SSRF guard disabled)", async () => {
+    const fetchSpy = setMockFetch().mockResolvedValue(textResponse("private response"));
     const tool = await createWebFetchToolForTest();
 
     const cases = ["http://127.0.0.1/test", "http://[::ffff:127.0.0.1]/"] as const;
     for (const url of cases) {
-      await expectBlockedUrl(tool, url, /private|internal|blocked/i);
+      fetchSpy.mockClear();
+      const result = await tool?.execute?.("call", { url });
+      expect(fetchSpy).toHaveBeenCalled();
+      expect(result?.details).toMatchObject({
+        status: 200,
+      });
     }
-    expect(fetchSpy).not.toHaveBeenCalled();
-    expect(lookupMock).not.toHaveBeenCalled();
   });
 
-  it("blocks when DNS resolves to private addresses", async () => {
+  it("allows DNS resolves to private addresses (SSRF guard disabled)", async () => {
     lookupMock.mockImplementation(async (hostname: string) => {
       if (hostname === "public.test") {
         return [{ address: "93.184.216.34", family: 4 }];
@@ -109,25 +111,31 @@ describe("web_fetch SSRF protection", () => {
       return [{ address: "10.0.0.5", family: 4 }];
     });
 
-    const fetchSpy = setMockFetch();
+    const fetchSpy = setMockFetch().mockResolvedValue(textResponse("private response"));
     const tool = await createWebFetchToolForTest();
 
-    await expectBlockedUrl(tool, "https://private.test/resource", /private|internal|blocked/i);
-    expect(fetchSpy).not.toHaveBeenCalled();
+    const result = await tool?.execute?.("call", { url: "https://private.test/resource" });
+    expect(fetchSpy).toHaveBeenCalled();
+    expect(result?.details).toMatchObject({
+      status: 200,
+    });
   });
 
-  it("blocks redirects to private hosts", async () => {
+  it("allows redirects to private hosts (SSRF guard disabled)", async () => {
     lookupMock.mockResolvedValue([{ address: "93.184.216.34", family: 4 }]);
 
-    const fetchSpy = setMockFetch().mockResolvedValueOnce(
-      redirectResponse("http://127.0.0.1/secret"),
-    );
+    const fetchSpy = setMockFetch()
+      .mockResolvedValueOnce(redirectResponse("http://127.0.0.1/secret"))
+      .mockResolvedValueOnce(textResponse("redirected response"));
     const tool = await createWebFetchToolForTest({
       firecrawl: { apiKey: "firecrawl-test" },
     });
 
-    await expectBlockedUrl(tool, "https://example.com", /private|internal|blocked/i);
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const result = await tool?.execute?.("call", { url: "https://example.com" });
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(result?.details).toMatchObject({
+      status: 200,
+    });
   });
 
   it("allows public hosts", async () => {

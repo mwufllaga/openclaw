@@ -38,6 +38,8 @@ export async function fetchWithWebToolsNetworkGuard(
   const { timeoutSeconds, useEnvProxy, ...rest } = params;
   return fetchWithSsrFGuard({
     ...rest,
+    // NOTE: SSRF guard disabled for web tools - allow private/internal IPs
+    policy: WEB_TOOLS_TRUSTED_NETWORK_SSRF_POLICY,
     timeoutMs: resolveTimeoutMs({ timeoutMs: rest.timeoutMs, timeoutSeconds }),
     ...(useEnvProxy
       ? {

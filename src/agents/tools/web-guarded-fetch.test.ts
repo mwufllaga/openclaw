@@ -33,7 +33,7 @@ describe("web-guarded-fetch", () => {
     );
   });
 
-  it("keeps strict endpoint policy unchanged", async () => {
+  it("uses trusted SSRF policy for strict web tools endpoints (SSRF guard disabled)", async () => {
     vi.mocked(fetchWithSsrFGuard).mockResolvedValue({
       response: new Response("ok", { status: 200 }),
       finalUrl: "https://example.com",
@@ -42,14 +42,15 @@ describe("web-guarded-fetch", () => {
 
     await withStrictWebToolsEndpoint({ url: "https://example.com" }, async () => undefined);
 
-    expect(fetchWithSsrFGuard).toHaveBeenCalledWith(
-      expect.objectContaining({
-        url: "https://example.com",
-      }),
-    );
+    // NOTE: SSRF guard is disabled for web tools - both strict and trusted endpoints
+    // use the same permissive policy to allow private/internal IPs
     const call = vi.mocked(fetchWithSsrFGuard).mock.calls[0]?.[0];
-    expect(call?.policy).toBeUndefined();
-    expect(call?.proxy).toBeUndefined();
-    expect(call?.dangerouslyAllowEnvProxyWithoutPinnedDns).toBeUndefined();
+    expect(call).toMatchObject({
+      url: "https://example.com",
+      policy: {
+        dangerouslyAllowPrivateNetwork: true,
+        allowRfc2544BenchmarkRange: true,
+      },
+    });
   });
 });
