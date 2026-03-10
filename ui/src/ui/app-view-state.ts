@@ -59,6 +59,7 @@ export type AppViewState = {
   chatToolMessages: unknown[];
   chatStream: string | null;
   chatStreamStartedAt: number | null;
+  chatClassification: import("./chat/message-extract.ts").ClassificationInfo | null;
   chatRunId: string | null;
   compactionStatus: CompactionStatus | null;
   fallbackStatus: FallbackStatus | null;

@@ -1,3 +1,5 @@
+import type { ClassificationInfo } from "../chat/message-extract.ts";
+
 /**
  * Chat message types for the UI layer.
  */
@@ -6,7 +8,13 @@
 export type ChatItem =
   | { kind: "message"; key: string; message: unknown }
   | { kind: "divider"; key: string; label: string; timestamp: number }
-  | { kind: "stream"; key: string; text: string; startedAt: number }
+  | {
+      kind: "stream";
+      key: string;
+      text: string;
+      startedAt: number;
+      classification?: ClassificationInfo;
+    }
   | { kind: "reading-indicator"; key: string };
 
 /** A group of consecutive messages from the same role (Slack-style layout) */

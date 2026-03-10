@@ -4,6 +4,13 @@ import { stripThinkingTags } from "../format.ts";
 
 const textCache = new WeakMap<object, string | null>();
 const thinkingCache = new WeakMap<object, string | null>();
+const classificationCache = new WeakMap<object, ClassificationInfo | null>();
+
+/** Extracted classification info from an assistant message. */
+export type ClassificationInfo = {
+  type: string;
+  analysis: string;
+};
 
 function processMessageText(text: string, role: string): string {
   const shouldStripInboundMetadata = role.toLowerCase() === "user";
@@ -79,6 +86,63 @@ export function extractThinkingCached(message: unknown): string | null {
   }
   const value = extractThinking(message);
   thinkingCache.set(obj, value);
+  return value;
+}
+
+/**
+ * Extract task classification info from an assistant message's raw text.
+ * Looks for the `<task_classification>` block containing `<analysis>` and `<conclusion>`.
+ */
+export function extractClassification(message: unknown): ClassificationInfo | null {
+  const m = message as Record<string, unknown>;
+  const role = typeof m.role === "string" ? m.role : "";
+  if (role !== "assistant") {
+    return null;
+  }
+
+  const rawText = extractRawText(message);
+  if (!rawText) {
+    return null;
+  }
+
+  const classificationMatch = rawText.match(
+    /<\s*task_classification\s*>([\s\S]*?)<\s*\/\s*task_classification\s*>/i,
+  );
+  if (!classificationMatch) {
+    return null;
+  }
+
+  const block = classificationMatch[1];
+
+  const analysisMatch = block.match(/<\s*analysis\s*>([\s\S]*?)<\s*\/\s*analysis\s*>/i);
+  const conclusionMatch = block.match(/<\s*conclusion\s*>([\s\S]*?)<\s*\/\s*conclusion\s*>/i);
+
+  const analysis = analysisMatch?.[1]?.trim() ?? "";
+  const conclusion = conclusionMatch?.[1]?.trim() ?? "";
+
+  // Extract the type from the conclusion (e.g. "type: SIMPLE_TOOL")
+  const typeMatch = conclusion.match(
+    /type\s*:\s*(SIMPLE_TOOL|COMPLEX_ORCHESTRATED|DIRECT_CONVERSATION)/i,
+  );
+  const type = typeMatch?.[1]?.toUpperCase() ?? "";
+
+  if (!type || !analysis) {
+    return null;
+  }
+
+  return { type, analysis };
+}
+
+export function extractClassificationCached(message: unknown): ClassificationInfo | null {
+  if (!message || typeof message !== "object") {
+    return extractClassification(message);
+  }
+  const obj = message;
+  if (classificationCache.has(obj)) {
+    return classificationCache.get(obj) ?? null;
+  }
+  const value = extractClassification(message);
+  classificationCache.set(obj, value);
   return value;
 }
 

@@ -6,6 +6,7 @@ import {
   renderReadingIndicatorGroup,
   renderStreamingGroup,
 } from "../chat/grouped-render.ts";
+import type { ClassificationInfo } from "../chat/message-extract.ts";
 import { normalizeMessage, normalizeRoleForGrouping } from "../chat/message-normalizer.ts";
 import { icons } from "../icons.ts";
 import { detectTextDirection } from "../text-direction.ts";
@@ -45,6 +46,7 @@ export type ChatProps = {
   toolMessages: unknown[];
   stream: string | null;
   streamStartedAt: number | null;
+  streamClassification: ClassificationInfo | null;
   assistantAvatarUrl?: string | null;
   draft: string;
   queue: ChatQueueItem[];
@@ -296,6 +298,7 @@ export function renderChat(props: ChatProps) {
               item.startedAt,
               props.onOpenSidebar,
               assistantIdentity,
+              item.classification,
             );
           }
 
@@ -584,6 +587,7 @@ function buildChatItems(props: ChatProps): Array<ChatItem | MessageGroup> {
         key,
         text: props.stream,
         startedAt: props.streamStartedAt ?? Date.now(),
+        classification: props.streamClassification ?? undefined,
       });
     } else {
       items.push({ kind: "reading-indicator", key });

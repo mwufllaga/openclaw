@@ -1,4 +1,8 @@
-import { extractText } from "../chat/message-extract.ts";
+import {
+  extractText,
+  extractClassification,
+  type ClassificationInfo,
+} from "../chat/message-extract.ts";
 import type { GatewayBrowserClient } from "../gateway.ts";
 import type { ChatAttachment } from "../ui-types.ts";
 import { generateUUID } from "../uuid.ts";
@@ -16,6 +20,7 @@ export type ChatState = {
   chatRunId: string | null;
   chatStream: string | null;
   chatStreamStartedAt: number | null;
+  chatClassification: ClassificationInfo | null;
   lastError: string | null;
 };
 
@@ -247,6 +252,11 @@ export function handleChatEvent(state: ChatState, payload?: ChatEventPayload) {
         state.chatStream = next;
       }
     }
+    // Extract classification from raw message (before stripping) for real-time UI display.
+    const classification = extractClassification(payload.message);
+    if (classification) {
+      state.chatClassification = classification;
+    }
   } else if (payload.state === "final") {
     const finalMessage = normalizeFinalAssistantMessage(payload.message);
     if (finalMessage) {
@@ -255,6 +265,7 @@ export function handleChatEvent(state: ChatState, payload?: ChatEventPayload) {
     state.chatStream = null;
     state.chatRunId = null;
     state.chatStreamStartedAt = null;
+    state.chatClassification = null;
   } else if (payload.state === "aborted") {
     const normalizedMessage = normalizeAbortedAssistantMessage(payload.message);
     if (normalizedMessage) {
@@ -275,10 +286,12 @@ export function handleChatEvent(state: ChatState, payload?: ChatEventPayload) {
     state.chatStream = null;
     state.chatRunId = null;
     state.chatStreamStartedAt = null;
+    state.chatClassification = null;
   } else if (payload.state === "error") {
     state.chatStream = null;
     state.chatRunId = null;
     state.chatStreamStartedAt = null;
+    state.chatClassification = null;
     state.lastError = payload.errorMessage ?? "chat error";
   }
   return payload.state;

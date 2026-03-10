@@ -74,6 +74,8 @@ import {
 } from "../../skills.js";
 import { buildSystemPromptParams } from "../../system-prompt-params.js";
 import { buildSystemPromptReport } from "../../system-prompt-report.js";
+import { applyTaskClassificationContextReplacement } from "../../task-classification/context-replacement.js";
+import { wrapStreamFnWithClassification } from "../../task-classification/stream-injection.js";
 import { sanitizeToolCallIdsForCloudCodeAssist } from "../../tool-call-id.js";
 import { resolveEffectiveToolFsWorkspaceOnly } from "../../tool-fs-policy.js";
 import { normalizeToolName } from "../../tool-policy.js";
@@ -1070,6 +1072,12 @@ export async function runEmbeddedAttempt(
         );
       }
 
+      // Task classification: inject classification instructions into the system prompt
+      // on every user turn. Tool continuations do not get classification instructions.
+      activeSession.agent.streamFn = wrapStreamFnWithClassification(activeSession.agent.streamFn, [
+        ...allowedToolNames,
+      ]);
+
       try {
         const prior = await sanitizeSessionHistory({
           messages: activeSession.messages,
@@ -1426,6 +1434,33 @@ export async function runEmbeddedAttempt(
           log.debug(
             `embedded run prompt end: runId=${params.runId} sessionId=${params.sessionId} durationMs=${Date.now() - promptStartedAt}`,
           );
+        }
+
+        // Task classification context replacement:
+        // After the prompt completes, check if the turn was classified as
+        // SIMPLE_TOOL or COMPLEX_ORCHESTRATED. If so, replace the tool
+        // call/result messages with a compressed summary. The user already
+        // saw the full response (streamed via UI); this only compresses
+        // the model's context for subsequent turns.
+        if (!promptError) {
+          try {
+            const replacementResult = applyTaskClassificationContextReplacement(
+              activeSession.messages,
+              params.sessionKey ?? params.sessionId,
+            );
+            if (replacementResult.replaced) {
+              activeSession.agent.replaceMessages(replacementResult.messages);
+              log.info(
+                `[task-classification] context replaced: ${replacementResult.messagesReplaced} messages → summary. ` +
+                  `type=${replacementResult.classificationType} runId=${params.runId} sessionId=${params.sessionId}`,
+              );
+            }
+          } catch (err) {
+            // Non-fatal: if context replacement fails, continue with full context
+            log.warn(
+              `[task-classification] context replacement failed, continuing with full context: ${String(err)}`,
+            );
+          }
         }
 
         // Capture snapshot before compaction wait so we have complete messages if timeout occurs

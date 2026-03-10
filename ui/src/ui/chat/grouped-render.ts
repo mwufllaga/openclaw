@@ -9,7 +9,9 @@ import { renderCopyAsMarkdownButton } from "./copy-as-markdown.ts";
 import {
   extractTextCached,
   extractThinkingCached,
+  extractClassificationCached,
   formatReasoningMarkdown,
+  type ClassificationInfo,
 } from "./message-extract.ts";
 import { isToolResultMessage, normalizeRoleForGrouping } from "./message-normalizer.ts";
 import { extractToolCards, renderToolCardSidebar } from "./tool-cards.ts";
@@ -76,6 +78,7 @@ export function renderStreamingGroup(
   startedAt: number,
   onOpenSidebar?: (content: string) => void,
   assistant?: AssistantIdentity,
+  classification?: ClassificationInfo,
 ) {
   const timestamp = new Date(startedAt).toLocaleTimeString([], {
     hour: "numeric",
@@ -93,7 +96,7 @@ export function renderStreamingGroup(
             content: [{ type: "text", text }],
             timestamp: startedAt,
           },
-          { isStreaming: true, showReasoning: false },
+          { isStreaming: true, showReasoning: false, classificationOverride: classification },
           onOpenSidebar,
         )}
         <div class="chat-group-footer">
@@ -223,7 +226,11 @@ function renderMessageImages(images: ImageBlock[]) {
 
 function renderGroupedMessage(
   message: unknown,
-  opts: { isStreaming: boolean; showReasoning: boolean },
+  opts: {
+    isStreaming: boolean;
+    showReasoning: boolean;
+    classificationOverride?: ClassificationInfo;
+  },
   onOpenSidebar?: (content: string) => void,
 ) {
   const m = message as Record<string, unknown>;
@@ -243,6 +250,10 @@ function renderGroupedMessage(
   const extractedText = extractTextCached(message);
   const extractedThinking =
     opts.showReasoning && role === "assistant" ? extractThinkingCached(message) : null;
+  const classification =
+    role === "assistant"
+      ? (opts.classificationOverride ?? extractClassificationCached(message))
+      : null;
   const markdownBase = extractedText?.trim() ? extractedText : null;
   const reasoningMarkdown = extractedThinking ? formatReasoningMarkdown(extractedThinking) : null;
   const markdown = markdownBase;
@@ -270,6 +281,19 @@ function renderGroupedMessage(
       ${canCopyMarkdown ? renderCopyAsMarkdownButton(markdown!) : nothing}
       ${renderMessageImages(images)}
       ${
+        classification
+          ? html`<details class="chat-classification">
+              <summary class="chat-classification__summary">
+                <span class="chat-classification__badge chat-classification__badge--${classification.type.toLowerCase()}">${formatClassificationType(classification.type)}</span>
+                <span class="chat-classification__label">Task Classification</span>
+              </summary>
+              <div class="chat-classification__analysis">${unsafeHTML(
+                toSanitizedMarkdownHtml(classification.analysis),
+              )}</div>
+            </details>`
+          : nothing
+      }
+      ${
         reasoningMarkdown
           ? html`<div class="chat-thinking">${unsafeHTML(
               toSanitizedMarkdownHtml(reasoningMarkdown),
@@ -284,4 +308,18 @@ function renderGroupedMessage(
       ${toolCards.map((card) => renderToolCardSidebar(card, onOpenSidebar))}
     </div>
   `;
+}
+
+/** Format classification type for display. */
+function formatClassificationType(type: string): string {
+  switch (type) {
+    case "SIMPLE_TOOL":
+      return "Simple Tool";
+    case "COMPLEX_ORCHESTRATED":
+      return "Complex";
+    case "DIRECT_CONVERSATION":
+      return "Direct";
+    default:
+      return type;
+  }
 }

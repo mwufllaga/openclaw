@@ -23,6 +23,7 @@ import { hasNonzeroUsage, normalizeUsage, type UsageLike } from "./usage.js";
 
 const THINKING_TAG_SCAN_RE = /<\s*(\/?)\s*(?:think(?:ing)?|thought|antthinking)\s*>/gi;
 const FINAL_TAG_SCAN_RE = /<\s*(\/?)\s*final\s*>/gi;
+const CLASSIFICATION_TAG_SCAN_RE = /<\s*(\/?)\s*task_classification\s*>/gi;
 const log = createSubsystemLogger("agent/embedded");
 
 export type {
@@ -49,8 +50,18 @@ export function subscribeEmbeddedPiSession(params: SubscribeEmbeddedPiSessionPar
     deltaBuffer: "",
     blockBuffer: "",
     // Track if a streamed chunk opened a <think> block (stateful across chunks).
-    blockState: { thinking: false, final: false, inlineCode: createInlineCodeState() },
-    partialBlockState: { thinking: false, final: false, inlineCode: createInlineCodeState() },
+    blockState: {
+      thinking: false,
+      final: false,
+      classification: false,
+      inlineCode: createInlineCodeState(),
+    },
+    partialBlockState: {
+      thinking: false,
+      final: false,
+      classification: false,
+      inlineCode: createInlineCodeState(),
+    },
     lastStreamedAssistant: undefined,
     lastStreamedAssistantCleaned: undefined,
     emittedAssistantUpdate: false,
@@ -354,7 +365,13 @@ export function subscribeEmbeddedPiSession(params: SubscribeEmbeddedPiSessionPar
 
   const stripBlockTags = (
     text: string,
-    state: { thinking: boolean; final: boolean; inlineCode?: InlineCodeState },
+    state: {
+      thinking: boolean;
+      final: boolean;
+      classification: boolean;
+      inlineCode?: InlineCodeState;
+    },
+    options?: { keepClassification?: boolean },
   ): string => {
     if (!text) {
       return text;
@@ -384,6 +401,34 @@ export function subscribeEmbeddedPiSession(params: SubscribeEmbeddedPiSessionPar
       processed += text.slice(lastIndex);
     }
     state.thinking = inThinking;
+
+    // 1b. Handle <task_classification> blocks (stateful, strip content inside, like think blocks)
+    // When keepClassification is true, preserve classification tags in the output
+    // so they can be extracted downstream (e.g. frontend UI).
+    if (!options?.keepClassification) {
+      const classificationCodeSpans = buildCodeSpanIndex(processed, inlineStateStart);
+      let classStripped = "";
+      CLASSIFICATION_TAG_SCAN_RE.lastIndex = 0;
+      let classLastIndex = 0;
+      let inClassification = state.classification;
+      for (const match of processed.matchAll(CLASSIFICATION_TAG_SCAN_RE)) {
+        const idx = match.index ?? 0;
+        if (classificationCodeSpans.isInside(idx)) {
+          continue;
+        }
+        if (!inClassification) {
+          classStripped += processed.slice(classLastIndex, idx);
+        }
+        const isClose = match[1] === "/";
+        inClassification = !isClose;
+        classLastIndex = idx + match[0].length;
+      }
+      if (!inClassification) {
+        classStripped += processed.slice(classLastIndex);
+      }
+      state.classification = inClassification;
+      processed = classStripped;
+    }
 
     // 2. Handle <final> blocks (stateful, strip content OUTSIDE)
     // If enforcement is disabled, we still strip the tags themselves to prevent

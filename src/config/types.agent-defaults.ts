@@ -277,6 +277,8 @@ export type AgentDefaultsConfig = {
   };
   /** Optional sandbox settings for non-main sessions. */
   sandbox?: AgentSandboxConfig;
+  /** Task classification system: auto-classifies incoming messages into execution paths. */
+  taskClassification?: AgentTaskClassificationConfig;
 };
 
 export type AgentCompactionMode = "default" | "safeguard";
@@ -315,4 +317,27 @@ export type AgentCompactionMemoryFlushConfig = {
   prompt?: string;
   /** System prompt appended for the memory flush turn. */
   systemPrompt?: string;
+};
+
+export type AgentTaskClassificationConfig = {
+  /** Summary policy after task completion ("always" | "on-success" | "never", default: "always"). */
+  summaryPolicy?: "always" | "on-success" | "never";
+  /** Logging controls for the classification system. */
+  logging?: {
+    /** Log level for classification events (default: "info"). */
+    level?: "debug" | "info" | "warn";
+    /** Whether to include the full analysis text in logs (default: true). */
+    includeAnalysis?: boolean;
+    /** Whether to include planning details in logs (default: true). */
+    includePlanningDetails?: boolean;
+    /** Whether to include summary content in logs (default: false). */
+    includeSummaryContent?: boolean;
+  };
+  /** Analysis-first enforcement controls. */
+  analysisFirst?: {
+    /** Whether to enforce analysis-first ordering (default: true). */
+    enforced?: boolean;
+    /** Minimum analysis length in characters (default: 20). */
+    minAnalysisLength?: number;
+  };
 };

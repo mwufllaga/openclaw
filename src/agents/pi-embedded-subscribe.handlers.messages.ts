@@ -174,11 +174,16 @@ export function handleMessageUpdate(
   }
 
   const next = ctx
-    .stripBlockTags(ctx.state.deltaBuffer, {
-      thinking: false,
-      final: false,
-      inlineCode: createInlineCodeState(),
-    })
+    .stripBlockTags(
+      ctx.state.deltaBuffer,
+      {
+        thinking: false,
+        final: false,
+        classification: false,
+        inlineCode: createInlineCodeState(),
+      },
+      { keepClassification: true },
+    )
     .trim();
   if (next) {
     const wasThinking = ctx.state.partialBlockState.thinking;
@@ -274,7 +279,11 @@ export function handleMessageEnd(
   });
 
   const text = resolveSilentReplyFallbackText({
-    text: ctx.stripBlockTags(rawText, { thinking: false, final: false }),
+    text: ctx.stripBlockTags(
+      rawText,
+      { thinking: false, final: false, classification: false },
+      { keepClassification: true },
+    ),
     messagingToolSentTexts: ctx.state.messagingToolSentTexts,
   });
   const rawThinking =
@@ -431,6 +440,7 @@ export function handleMessageEnd(
   ctx.blockChunker?.reset();
   ctx.state.blockState.thinking = false;
   ctx.state.blockState.final = false;
+  ctx.state.blockState.classification = false;
   ctx.state.blockState.inlineCode = createInlineCodeState();
   ctx.state.lastStreamedAssistant = undefined;
   ctx.state.lastStreamedAssistantCleaned = undefined;
